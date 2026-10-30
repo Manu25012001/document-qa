@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}AI-Based Document Question Answering System{% endblock %}
+{% block content %}
+<header class="mb-4"><p class="eyebrow">RETRIEVAL AUGMENTED GENERATION</p><h1>AI-Based Document<br class="d-none d-sm-block"> Question Answering System</h1><p class="lead text-secondary">Upload a PDF, then ask questions grounded in its text.</p></header>
+<div class="row g-4">
+  <section class="col-lg-5"><div class="card h-100"><div class="card-body p-4"><h2 class="h5">1. Add a document</h2><p class="small text-secondary">Selectable-text PDFs only · Maximum 10 MB and 500 pages</p>
+  <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data" data-busy-form><input type="hidden" name="csrf_token" value="{{ session.csrf_token }}"><label for="document" class="form-label">PDF file</label><input class="form-control mb-3" id="document" name="document" type="file" accept="application/pdf,.pdf" required><button class="btn btn-primary" type="submit"><span class="button-label">Upload and process</span></button></form>
+  {% if document %}<hr><div class="document-badge"><span class="status-dot"></span><div><div class="fw-semibold">{{ document.filename }}</div><div class="small text-secondary">{{ document.pages }} pages · {{ document.chunks|length }} chunks indexed</div></div></div><form action="{{ url_for('reset') }}" method="post" class="mt-3"><input type="hidden" name="csrf_token" value="{{ session.csrf_token }}"><button class="btn btn-outline-secondary btn-sm" type="submit">Reset document and conversation</button></form>{% endif %}
+  </div></div></section>
+  <section class="col-lg-7"><div class="card"><div class="card-body p-4"><h2 class="h5">2. Ask your document</h2>
+  {% if document %}<form action="{{ url_for('ask') }}" method="post" data-busy-form><input type="hidden" name="csrf_token" value="{{ session.csrf_token }}"><div class="input-group mt-3"><input class="form-control" type="text" name="question" maxlength="2000" placeholder="Ask a question about this PDF…" required><button class="btn btn-primary" type="submit"><span class="button-label">Ask question</span></button></div></form>
+  {% else %}<div class="empty-state mt-3"><div class="empty-icon">⌕</div><p class="mb-0">Your answer and source references will appear here after you upload a PDF.</p></div>{% endif %}
+  {% if document and document.history %}<div class="conversation mt-4">{% for item in document.history|reverse %}<article class="qa-item"><p class="question-label">QUESTION</p><p class="fw-semibold">{{ item.question }}</p><p class="question-label">ANSWER</p><p class="answer-text">{{ item.answer }}</p><div class="small text-secondary">Retrieved source pages: {% for page in item.sources %}<span class="source-pill">{{ page }}</span>{% endfor %}</div><div class="small text-warning-emphasis mt-2">AI-generated response; check the original document.</div></article>{% endfor %}</div>{% endif %}
+  </div></div></section>
+</div>
+<div class="alert alert-light border mt-4 small mb-0"><strong>Privacy:</strong> PDF text and questions are sent to Google Gemini. Do not upload confidential documents. Files and embeddings are held in memory for this server process and cleared on restart or reset. This demo is not designed for public deployment.</div>
+{% endblock %}

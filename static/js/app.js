@@ -1,0 +1,1 @@
+document.querySelectorAll('[data-busy-form]').forEach((form)=>form.addEventListener('submit',()=>{const button=form.querySelector('button[type="submit"]');if(button){button.disabled=true;const label=button.querySelector('.button-label');if(label)label.textContent='Processing…';}}));
