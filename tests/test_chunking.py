@@ -20,6 +20,31 @@ class ChunkingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             chunk_pages([(1, "text")], 5, 5)
 
+    def test_cross_page_chunks(self):
+        """Chunks should span page boundaries when text flows across pages."""
+        pages = [(1, "aaaa bbbb"), (2, "cccc dddd")]
+        # Combined: "aaaa bbbb cccc dddd" (19 chars)
+        # chunk_size=12 should produce a chunk spanning pages 1 and 2.
+        chunks = chunk_pages(pages, chunk_size=12, overlap=3)
+        has_cross_page = any(c.page_start != c.page_end for c in chunks)
+        self.assertTrue(has_cross_page, "Expected at least one chunk spanning two pages")
+
+    def test_page_end_tracks_last_page(self):
+        """page_end should equal page_start for single-page text."""
+        chunks = chunk_pages([(5, "hello world")], chunk_size=100, overlap=0)
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(chunks[0].page_start, 5)
+        self.assertEqual(chunks[0].page_end, 5)
+
+    def test_multiple_pages_single_chunk(self):
+        """A small multi-page document that fits in one chunk should span all pages."""
+        pages = [(1, "ab"), (2, "cd"), (3, "ef")]
+        chunks = chunk_pages(pages, chunk_size=100, overlap=0)
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(chunks[0].page_start, 1)
+        self.assertEqual(chunks[0].page_end, 3)
+        self.assertEqual(chunks[0].text, "ab cd ef")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -17,7 +17,7 @@ Finding a specific fact in a long PDF takes time. This project demonstrates a sm
 
 ## Technology stack
 
-Python 3.10 or newer (Python 3.11 recommended), Flask, official `google-genai` SDK, PyMuPDF, NumPy, python-dotenv, HTML, CSS, and Bootstrap 5. Gemini API usage may be subject to quotas and charges.
+Python 3.11 or newer, Flask, official `google-genai` SDK, PyMuPDF, NumPy, python-dotenv, HTML, CSS, and Bootstrap 5. Gemini API usage may be subject to quotas and charges.
 
 ## Architecture and workflow
 
@@ -57,12 +57,13 @@ document-qa/
 ├── PROJECT_REPORT.md
 ├── templates/{base.html,index.html}
 ├── static/{css/style.css,js/app.js}
-└── tests/{test_chunking.py,test_retrieval.py}
+└── tests/{test_ajax.py,test_app.py,test_chunking.py,test_embeddings.py,
+           test_extraction.py,test_retrieval.py}
 ```
 
 ## Prerequisites and installation (Windows PowerShell)
 
-Install Python 3.10+ and ensure the Python launcher `py` works. In PowerShell:
+Install Python 3.11+ and ensure the Python launcher `py` works. In PowerShell:
 
 ```powershell
 cd $HOME\OneDrive\Desktop\document-qa
@@ -106,7 +107,7 @@ Manual interface cases: upload a normal text PDF and ask a question; upload an i
 ## Limitations
 
 - Scanned PDFs need OCR before use. Tables, columns, and unusual layouts can extract poorly.
-- Embedding calls are made one chunk at a time; large PDFs may take time or encounter quotas.
+- Embedding calls are batched but large PDFs may still encounter API quotas.
 - The app stores documents and vectors in process memory, so a restart clears them and multiple workers do not share them.
 - The random fallback secret invalidates sessions after restart; configure a stable secret for local use.
 - This development server is not hardened for internet-facing deployment. It has no authentication, durable storage, or production server configuration.

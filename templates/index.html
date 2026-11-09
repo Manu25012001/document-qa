@@ -1,17 +1,552 @@
 {% extends "base.html" %}
-{% block title %}AI-Based Document Question Answering System{% endblock %}
+{% block title %}DocuMind AI · AI-Based Document Question Answering System{% endblock %}
+
 {% block content %}
-<header class="mb-4"><p class="eyebrow">RETRIEVAL AUGMENTED GENERATION</p><h1>AI-Based Document<br class="d-none d-sm-block"> Question Answering System</h1><p class="lead text-secondary">Upload a PDF, then ask questions grounded in its text.</p></header>
-<div class="row g-4">
-  <section class="col-lg-5"><div class="card h-100"><div class="card-body p-4"><h2 class="h5">1. Add a document</h2><p class="small text-secondary">Selectable-text PDFs only · Maximum 10 MB and 500 pages</p>
-  <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data" data-busy-form><input type="hidden" name="csrf_token" value="{{ session.csrf_token }}"><label for="document" class="form-label">PDF file</label><input class="form-control mb-3" id="document" name="document" type="file" accept="application/pdf,.pdf" required><button class="btn btn-primary" type="submit"><span class="button-label">Upload and process</span></button></form>
-  {% if document %}<hr><div class="document-badge"><span class="status-dot"></span><div><div class="fw-semibold">{{ document.filename }}</div><div class="small text-secondary">{{ document.pages }} pages · {{ document.chunks|length }} chunks indexed</div></div></div><form action="{{ url_for('reset') }}" method="post" class="mt-3"><input type="hidden" name="csrf_token" value="{{ session.csrf_token }}"><button class="btn btn-outline-secondary btn-sm" type="submit">Reset document and conversation</button></form>{% endif %}
-  </div></div></section>
-  <section class="col-lg-7"><div class="card"><div class="card-body p-4"><h2 class="h5">2. Ask your document</h2>
-  {% if document %}<form action="{{ url_for('ask') }}" method="post" data-busy-form><input type="hidden" name="csrf_token" value="{{ session.csrf_token }}"><div class="input-group mt-3"><input class="form-control" type="text" name="question" maxlength="2000" placeholder="Ask a question about this PDF…" required><button class="btn btn-primary" type="submit"><span class="button-label">Ask question</span></button></div></form>
-  {% else %}<div class="empty-state mt-3"><div class="empty-icon">⌕</div><p class="mb-0">Your answer and source references will appear here after you upload a PDF.</p></div>{% endif %}
-  {% if document and document.history %}<div class="conversation mt-4">{% for item in document.history|reverse %}<article class="qa-item"><p class="question-label">QUESTION</p><p class="fw-semibold">{{ item.question }}</p><p class="question-label">ANSWER</p><p class="answer-text">{{ item.answer }}</p><div class="small text-secondary">Retrieved source pages: {% for page in item.sources %}<span class="source-pill">{{ page }}</span>{% endfor %}</div><div class="small text-warning-emphasis mt-2">AI-generated response; check the original document.</div></article>{% endfor %}</div>{% endif %}
-  </div></div></section>
+<div class="app-container" id="app">
+  <!-- Mobile Sidebar Overlay Backdrop -->
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+  <!-- ==================== SIDEBAR ==================== -->
+  <aside class="app-sidebar" id="app-sidebar">
+    <div class="sidebar-header">
+      <div class="brand-group">
+        <div class="brand-logo">
+          <i data-lucide="sparkles" class="brand-icon"></i>
+        </div>
+        <div class="brand-meta">
+          <span class="brand-title">DocuMind AI</span>
+          <span class="brand-badge">RAG v2.0</span>
+        </div>
+      </div>
+      <button type="button" class="icon-btn sidebar-close-btn" id="sidebar-close-btn" aria-label="Close sidebar">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+
+    <!-- New Conversation Action -->
+    <div class="sidebar-action">
+      <button type="button" class="btn btn-primary btn-block new-chat-btn" id="new-chat-btn">
+        <i data-lucide="plus"></i>
+        <span>New Conversation</span>
+      </button>
+    </div>
+
+    <!-- Sidebar Scrollable Content -->
+    <div class="sidebar-content">
+      <!-- Active Document Section -->
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">
+          <span>Active Document</span>
+          <span class="pulse-indicator" id="doc-pulse-indicator" style="display: {% if document %}inline-flex{% else %}none{% endif %};"></span>
+        </div>
+
+        <div id="sidebar-document-card" class="sidebar-doc-card {% if not document %}empty{% endif %}">
+          {% if document %}
+            <div class="doc-badge-icon">
+              <i data-lucide="file-text"></i>
+            </div>
+            <div class="doc-badge-details">
+              <div class="doc-badge-name" title="{{ document.filename }}">{{ document.filename }}</div>
+              <div class="doc-badge-sub">
+                <span>{{ document.pages }} pages</span>
+                <span>·</span>
+                <span>{{ document.chunks|length }} chunks</span>
+              </div>
+            </div>
+            <form action="{{ url_for('reset') }}" method="post" class="reset-form" id="reset-doc-form">
+              <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+              <button type="submit" class="icon-btn icon-btn-danger" title="Eject Document and Clear Session" aria-label="Reset document">
+                <i data-lucide="trash-2"></i>
+              </button>
+            </form>
+          {% else %}
+            <div class="sidebar-doc-empty">
+              <i data-lucide="file-up" class="doc-empty-icon"></i>
+              <p>No document loaded</p>
+              <button type="button" class="btn btn-secondary btn-sm" id="sidebar-upload-trigger">
+                Upload PDF
+              </button>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Recent Questions / Inquiries in this session -->
+      <div class="sidebar-section" id="sidebar-history-section">
+        <div class="sidebar-section-title">
+          <span>Recent Questions</span>
+          <span class="badge" id="history-count">{% if document and document.history %}{{ document.history|length }}{% else %}0{% endif %}</span>
+        </div>
+        <div class="history-list" id="sidebar-history-list">
+          {% if document and document.history %}
+            {% for item in document.history|reverse %}
+              <button type="button" class="history-item" data-index="{{ loop.revindex0 }}" title="{{ item.question }}">
+                <i data-lucide="message-square" class="history-item-icon"></i>
+                <span class="history-item-text">{{ item.question }}</span>
+              </button>
+            {% endfor %}
+          {% else %}
+            <div class="history-empty">Questions you ask will appear here.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- RAG Pipeline Specs / System Specs -->
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Pipeline Architecture</div>
+        <div class="system-specs">
+          <div class="spec-row">
+            <span class="spec-label">LLM Engine</span>
+            <span class="spec-value">Gemini 3 Flash</span>
+          </div>
+          <div class="spec-row">
+            <span class="spec-label">Embeddings</span>
+            <span class="spec-value">gemini-embedding-001</span>
+          </div>
+          <div class="spec-row">
+            <span class="spec-label">Vector Search</span>
+            <span class="spec-value">NumPy Cosine (Top-3)</span>
+          </div>
+          <div class="spec-row">
+            <span class="spec-label">Chunk Sizing</span>
+            <span class="spec-value">1200 char / 150 overlap</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sidebar Footer -->
+    <div class="sidebar-footer">
+      <button type="button" class="footer-btn" id="open-settings-btn">
+        <i data-lucide="settings"></i>
+        <span>Settings & Help</span>
+      </button>
+      <button type="button" class="footer-btn theme-toggle-btn" id="sidebar-theme-toggle">
+        <i data-lucide="moon" class="dark-icon"></i>
+        <i data-lucide="sun" class="light-icon"></i>
+        <span class="theme-text">Theme</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ==================== MAIN CONTENT AREA ==================== -->
+  <main class="app-main">
+    <!-- Top Navigation Bar -->
+    <header class="app-header">
+      <div class="header-left">
+        <button type="button" class="icon-btn mobile-menu-btn" id="mobile-menu-btn" aria-label="Toggle menu">
+          <i data-lucide="menu"></i>
+        </button>
+        <button type="button" class="icon-btn sidebar-collapse-btn desktop-only" id="sidebar-collapse-btn" title="Toggle sidebar">
+          <i data-lucide="panel-left-close"></i>
+        </button>
+        <div class="header-title-group">
+          <h1 class="header-app-title">AI-Based Document Question Answering System</h1>
+          <div class="header-breadcrumb">Retrieval-Augmented Generation (RAG) · Powered by Gemini</div>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <!-- Document Indicator -->
+        <div class="header-status-pill {% if document %}active{% endif %}" id="header-status-pill">
+          <span class="status-dot"></span>
+          <span class="status-text" id="header-status-text">
+            {% if document %}
+              Document: {{ document.filename }}
+            {% else %}
+              No Document
+            {% endif %}
+          </span>
+        </div>
+
+        <!-- Model Indicator -->
+        <div class="header-model-badge" title="Powered by Google Gemini">
+          <i data-lucide="cpu" class="model-badge-icon"></i>
+          <span>Gemini 3 Flash</span>
+        </div>
+
+        <!-- Theme Toggle -->
+        <button type="button" class="icon-btn theme-toggle-btn" id="header-theme-toggle" aria-label="Toggle dark/light theme" title="Toggle theme">
+          <i data-lucide="moon" class="dark-icon"></i>
+          <i data-lucide="sun" class="light-icon"></i>
+        </button>
+
+        <!-- Change/Upload Document Quick Button -->
+        <button type="button" class="btn btn-secondary btn-sm header-upload-btn" id="header-upload-btn">
+          <i data-lucide="upload-cloud"></i>
+          <span>{% if document %}Switch PDF{% else %}Upload PDF{% endif %}</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Body Area -->
+    <div class="app-body" id="app-body">
+
+      <!-- ==================== UPLOAD VIEW ==================== -->
+      <section class="view-panel {% if document %}view-hidden{% endif %}" id="upload-view">
+        <div class="upload-container">
+          <div class="hero-header">
+            <div class="hero-pill">
+              <i data-lucide="shield-check"></i>
+              <span>Grounded Document Intelligence</span>
+            </div>
+            <h2 class="hero-title">Ask Questions Grounded in Your Document</h2>
+            <p class="hero-description">
+              Upload any selectable-text PDF document. DocuMind extracts pages, generates dense semantic embeddings,
+              and leverages cosine similarity to provide factual, verifiable answers citing exact page numbers.
+            </p>
+          </div>
+
+          <!-- Drag and Drop Upload Card -->
+          <div class="upload-card">
+            <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data" id="upload-form" class="dropzone-form">
+              <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+              <input type="file" id="file-input" name="document" accept="application/pdf,.pdf" class="file-input-hidden" required>
+
+              <div class="dropzone" id="dropzone" role="button" tabindex="0">
+                <div class="dropzone-content" id="dropzone-prompt">
+                  <div class="dropzone-icon-ring">
+                    <i data-lucide="file-up" class="dropzone-icon"></i>
+                  </div>
+                  <h3 class="dropzone-title">Drop your PDF file here, or <span class="highlight">browse</span></h3>
+                  <p class="dropzone-meta">Supports selectable-text PDFs up to 10 MB and 500 pages</p>
+                </div>
+
+                <!-- Selected File Preview Container (hidden by default) -->
+                <div class="file-preview-card" id="file-preview" style="display: none;">
+                  <div class="file-preview-left">
+                    <div class="pdf-icon-box">
+                      <i data-lucide="file-text"></i>
+                    </div>
+                    <div class="file-preview-info">
+                      <div class="file-preview-name" id="preview-filename">document.pdf</div>
+                      <div class="file-preview-size" id="preview-filesize">0 KB</div>
+                    </div>
+                  </div>
+                  <button type="button" class="icon-btn icon-btn-danger" id="cancel-file-btn" title="Remove file">
+                    <i data-lucide="x"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Upload Progress Indicator -->
+              <div class="upload-progress-wrapper" id="upload-progress-wrapper" style="display: none;">
+                <div class="progress-bar-container">
+                  <div class="progress-bar-fill" id="progress-bar-fill" style="width: 0%;"></div>
+                </div>
+                <div class="progress-meta">
+                  <span class="progress-status" id="progress-status-text">Processing document...</span>
+                  <span class="progress-percent" id="progress-percent-text">0%</span>
+                </div>
+              </div>
+
+              <!-- Action Button -->
+              <div class="upload-actions">
+                <button type="submit" class="btn btn-primary btn-lg upload-submit-btn" id="upload-submit-btn">
+                  <i data-lucide="sparkles" class="btn-icon"></i>
+                  <span class="button-label">Upload and Process Document</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Feature Highlights Grid -->
+          <div class="features-grid">
+            <div class="feature-card">
+              <div class="feature-icon-box blue">
+                <i data-lucide="layers"></i>
+              </div>
+              <h4 class="feature-title">Page-Aware Chunking</h4>
+              <p class="feature-text">Splits long text into overlapping semantic windows without losing context across page boundaries.</p>
+            </div>
+
+            <div class="feature-card">
+              <div class="feature-icon-box purple">
+                <i data-lucide="target"></i>
+              </div>
+              <h4 class="feature-title">Cosine Similarity Search</h4>
+              <p class="feature-text">NumPy-powered vector search retrieves top-scoring passages semantically aligned with your question.</p>
+            </div>
+
+            <div class="feature-card">
+              <div class="feature-icon-box green">
+                <i data-lucide="check-circle-2"></i>
+              </div>
+              <h4 class="feature-title">Untrusted-Context Safety</h4>
+              <p class="feature-text">Strict system instructions prevent hallucination and format direct citations back to the source pages.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== CHAT VIEW ==================== -->
+      <section class="view-panel {% if not document %}view-hidden{% endif %}" id="chat-view">
+        <div class="chat-layout">
+          <!-- Active Document Quick Banner -->
+          <div class="chat-doc-banner" id="chat-doc-banner">
+            <div class="banner-left">
+              <div class="banner-icon"><i data-lucide="file-check"></i></div>
+              <div class="banner-details">
+                <div class="banner-name" id="banner-doc-name">{{ document.filename if document else '' }}</div>
+                <div class="banner-meta" id="banner-doc-meta">
+                  {% if document %}
+                    {{ document.pages }} pages · {{ document.chunks|length }} chunks indexed in memory
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            <div class="banner-actions">
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="switch-doc-btn">
+                <i data-lucide="refresh-cw"></i>
+                <span>Switch Document</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Chat Messages Scroll Container -->
+          <div class="chat-messages" id="chat-messages">
+            <!-- Initial Welcome Message -->
+            <div class="message-wrapper ai-message">
+              <div class="message-avatar">
+                <i data-lucide="sparkles"></i>
+              </div>
+              <div class="message-body">
+                <div class="message-sender-row">
+                  <span class="sender-name">DocuMind AI</span>
+                  <span class="sender-badge">Gemini RAG</span>
+                </div>
+                <div class="message-content markdown-rendered">
+                  <p>Hello! I have indexed your document and extracted its vector embeddings. You can ask me any question about the document's content, and I will synthesize an answer grounded strictly in the retrieved excerpts with cited page numbers.</p>
+                </div>
+
+                <!-- Suggested Questions Chips -->
+                <div class="suggested-chips-container" id="suggested-chips">
+                  <div class="chips-title"><i data-lucide="compass"></i> Suggested inquiries:</div>
+                  <div class="chips-list">
+                    <button type="button" class="chip-btn" data-question="Summarize the core points and main objective of this document.">
+                      Summarize core points
+                    </button>
+                    <button type="button" class="chip-btn" data-question="What are the key findings, conclusions, or recommendations?">
+                      Key findings & conclusions
+                    </button>
+                    <button type="button" class="chip-btn" data-question="Extract any important dates, statistics, metrics, or deadlines mentioned.">
+                      Important metrics & dates
+                    </button>
+                    <button type="button" class="chip-btn" data-question="What problems or challenges does this document identify and address?">
+                      Identified challenges
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Existing History from Server (if any) -->
+            {% if document and document.history %}
+              {% for item in document.history %}
+                <!-- User Message -->
+                <div class="message-wrapper user-message">
+                  <div class="message-body">
+                    <div class="message-sender-row">
+                      <span class="sender-name">You</span>
+                    </div>
+                    <div class="message-content">
+                      <p>{{ item.question }}</p>
+                    </div>
+                  </div>
+                  <div class="message-avatar user-avatar">
+                    <i data-lucide="user"></i>
+                  </div>
+                </div>
+
+                <!-- AI Response Message -->
+                <div class="message-wrapper ai-message">
+                  <div class="message-avatar">
+                    <i data-lucide="sparkles"></i>
+                  </div>
+                  <div class="message-body">
+                    <div class="message-sender-row">
+                      <span class="sender-name">DocuMind AI</span>
+                      <span class="sender-badge">Gemini RAG</span>
+                      <div class="message-actions">
+                        <button type="button" class="action-btn copy-msg-btn" title="Copy answer" aria-label="Copy answer">
+                          <i data-lucide="copy"></i>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="message-content markdown-rendered" data-raw-answer="{{ item.answer }}">
+                      {{ item.answer }}
+                    </div>
+
+                    <!-- Source Citations and Excerpts -->
+                    {% if item.sources %}
+                      <div class="sources-card">
+                        <div class="sources-header">
+                          <div class="sources-title">
+                            <i data-lucide="bookmark"></i>
+                            <span>Retrieved Source Pages:</span>
+                          </div>
+                          <div class="source-pills">
+                            {% for page in item.sources %}
+                              <span class="source-pill">Page {{ page }}</span>
+                            {% endfor %}
+                          </div>
+                        </div>
+
+                        {% if item.passages %}
+                          <details class="passages-accordion">
+                            <summary class="accordion-toggle">
+                              <i data-lucide="chevron-right" class="toggle-icon"></i>
+                              <span>Inspect retrieved context passages ({{ item.passages|length }})</span>
+                            </summary>
+                            <div class="passages-list">
+                              {% for passage in item.passages %}
+                                <div class="passage-item">
+                                  <div class="passage-meta">
+                                    <span class="passage-page">Page {{ passage.page_start }}{% if passage.page_end != passage.page_start %}-{{ passage.page_end }}{% endif %}</span>
+                                    {% if passage.similarity %}
+                                      <span class="passage-score">Similarity: {{ passage.similarity }}</span>
+                                    {% endif %}
+                                  </div>
+                                  <div class="passage-text">{{ passage.text }}</div>
+                                </div>
+                              {% endfor %}
+                            </div>
+                          </details>
+                        {% endif %}
+                      </div>
+                    {% endif %}
+
+                    <div class="message-disclaimer">
+                      <i data-lucide="info"></i>
+                      <span>Grounded in document excerpts. Always verify critical facts in the original pages.</span>
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            {% endif %}
+
+            <!-- Dynamic Live Typing Placeholder -->
+            <div class="message-wrapper ai-message live-typing-placeholder" id="live-typing-message" style="display: none;">
+              <div class="message-avatar">
+                <i data-lucide="sparkles"></i>
+              </div>
+              <div class="message-body">
+                <div class="message-sender-row">
+                  <span class="sender-name">DocuMind AI</span>
+                  <span class="sender-badge pulse">Searching & Thinking...</span>
+                </div>
+                <div class="typing-bubble">
+                  <span class="typing-dot"></span>
+                  <span class="typing-dot"></span>
+                  <span class="typing-dot"></span>
+                  <span class="typing-text">Retrieving relevant passages & synthesizing answer...</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sticky Chat Input Container -->
+          <div class="chat-input-wrapper">
+            <form action="{{ url_for('ask') }}" method="post" id="ask-form" class="chat-input-form">
+              <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+              <div class="input-card">
+                <textarea
+                  id="question-input"
+                  name="question"
+                  class="chat-textarea"
+                  placeholder="Ask a question grounded in this PDF... (Shift + Enter for newline)"
+                  rows="1"
+                  maxlength="2000"
+                  required
+                ></textarea>
+                <div class="input-controls">
+                  <span class="char-counter" id="char-counter">0/2000</span>
+                  <button type="submit" class="btn btn-primary send-btn" id="send-btn" aria-label="Send message" disabled>
+                    <i data-lucide="arrow-up" class="send-icon"></i>
+                  </button>
+                </div>
+              </div>
+            </form>
+            <div class="chat-footnote">
+              DocuMind AI synthesizes answers using Gemini. Content is held in ephemeral memory for this session.
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
 </div>
-<div class="alert alert-light border mt-4 small mb-0"><strong>Privacy:</strong> PDF text and questions are sent to Google Gemini. Do not upload confidential documents. Files and embeddings are held in memory for this server process and cleared on restart or reset. This demo is not designed for public deployment.</div>
+
+<!-- ==================== SETTINGS & HELP MODAL ==================== -->
+<div class="modal-backdrop" id="settings-modal" style="display: none;">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-title-group">
+        <i data-lucide="settings" class="modal-icon"></i>
+        <h3>System Settings & Info</h3>
+      </div>
+      <button type="button" class="icon-btn modal-close-btn" id="close-settings-btn" aria-label="Close modal">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="settings-group">
+        <h4>About DocuMind AI</h4>
+        <p class="settings-desc">
+          DocuMind AI demonstrates enterprise-grade Retrieval-Augmented Generation (RAG).
+          It indexes PDF documents using vector embeddings and ranks passages with NumPy cosine similarity before prompting Google's Gemini generation model.
+        </p>
+      </div>
+
+      <div class="settings-group">
+        <h4>Configuration Parameters</h4>
+        <table class="settings-table">
+          <tbody>
+            <tr>
+              <td>Generation Model</td>
+              <td><code>gemini-3-flash-preview</code></td>
+            </tr>
+            <tr>
+              <td>Embedding Model</td>
+              <td><code>gemini-embedding-001</code></td>
+            </tr>
+            <tr>
+              <td>Max Document Size</td>
+              <td>10 MB / 500 Pages</td>
+            </tr>
+            <tr>
+              <td>Chunk Size / Overlap</td>
+              <td>1,200 chars / 150 chars overlap</td>
+            </tr>
+            <tr>
+              <td>Similarity Retrieval</td>
+              <td>Top 3 passages (Cosine)</td>
+            </tr>
+            <tr>
+              <td>Session Max Questions</td>
+              <td>30 questions per session</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="settings-group">
+        <h4>Privacy & Ephemeral Memory</h4>
+        <p class="settings-desc">
+          Document vectors and extracted pages are stored in server memory only during your active browser session.
+          No files are permanently written to server storage.
+        </p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" id="modal-done-btn">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hydration Data for JS -->
+<script id="initial-state" type="application/json">
+  {{ initial_state | tojson }}
+</script>
 {% endblock %}

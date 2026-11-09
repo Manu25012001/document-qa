@@ -1,5 +1,6 @@
 """Application settings loaded from the environment."""
 import os
+from datetime import timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -24,4 +25,4 @@ class Config:
     MAX_PAGES = _positive_int("MAX_PAGES", 500)
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
-    PERMANENT_SESSION_LIFETIME = 60 * 60 * 4
+    PERMANENT_SESSION_LIFETIME = timedelta(hours=4)

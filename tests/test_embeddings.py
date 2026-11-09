@@ -35,5 +35,26 @@ class AnswerGenerationTests(unittest.TestCase):
             service.answer("Question", [{"page_start": 1, "text": "Passage"}])
 
 
+class EmbedBatchTests(unittest.TestCase):
+    def test_embed_batch_groups_results(self):
+        service = GeminiService.__new__(GeminiService)
+        service.embedding_model = "gemini-embedding-001"
+        mock_result = SimpleNamespace(embeddings=[
+            SimpleNamespace(values=[0.1, 0.2]),
+            SimpleNamespace(values=[0.3, 0.4]),
+        ])
+        service.client = SimpleNamespace(
+            models=SimpleNamespace(embed_content=Mock(return_value=mock_result))
+        )
+        embeddings = service.embed_batch(["text1", "text2"], "RETRIEVAL_DOCUMENT")
+        self.assertEqual(len(embeddings), 2)
+        self.assertEqual(embeddings[0], [0.1, 0.2])
+        self.assertEqual(embeddings[1], [0.3, 0.4])
+
+    def test_embed_batch_empty_input(self):
+        service = GeminiService.__new__(GeminiService)
+        self.assertEqual(service.embed_batch([], "RETRIEVAL_DOCUMENT"), [])
+
+
 if __name__ == "__main__":
     unittest.main()

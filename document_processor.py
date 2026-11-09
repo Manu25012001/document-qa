@@ -40,20 +40,50 @@ def extract_pages(pdf_bytes: bytes, max_pages: int = 500) -> list[tuple[int, str
 
 def chunk_pages(pages: list[tuple[int, str]], chunk_size: int = 1200,
                 overlap: int = 150) -> list[Chunk]:
+    """Split page text into overlapping chunks that can span page boundaries.
+
+    Each chunk tracks the first and last page it covers via ``page_start``
+    and ``page_end``, so cross-page paragraphs are kept together.
+    """
     if chunk_size < 1 or overlap < 0 or overlap >= chunk_size:
         raise ValueError("Chunk size must be positive and overlap must be smaller than chunk size.")
-    chunks = []
+
+    # Build a single text stream with page-boundary tracking.
+    segments: list[tuple[int, int, int]] = []  # (page_number, start_offset, end_offset)
+    parts: list[str] = []
+    offset = 0
     for page_number, page_text in pages:
         text = " ".join(page_text.split())
         if not text:
             continue
-        start = 0
-        while start < len(text):
-            end = min(start + chunk_size, len(text))
-            content = text[start:end].strip()
-            if content:
-                chunks.append(Chunk(len(chunks) + 1, page_number, page_number, content))
-            if end == len(text):
-                break
-            start = end - overlap
+        if parts:
+            parts.append(" ")
+            offset += 1
+        segments.append((page_number, offset, offset + len(text)))
+        parts.append(text)
+        offset += len(text)
+
+    full_text = "".join(parts)
+    if not full_text:
+        return []
+
+    chunks: list[Chunk] = []
+    start = 0
+    while start < len(full_text):
+        end = min(start + chunk_size, len(full_text))
+        content = full_text[start:end].strip()
+        if content:
+            # Determine which pages this chunk spans.
+            page_start = None
+            page_end = None
+            for page_num, seg_start, seg_end in segments:
+                if seg_end > start and seg_start < end:
+                    if page_start is None:
+                        page_start = page_num
+                    page_end = page_num
+            if page_start is not None:
+                chunks.append(Chunk(len(chunks) + 1, page_start, page_end, content))
+        if end == len(full_text):
+            break
+        start = end - overlap
     return chunks

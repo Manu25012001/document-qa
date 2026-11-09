@@ -38,14 +38,14 @@ The implementation is a local academic demonstration for selectable-text PDFs. I
 
 ### Hardware (indicative)
 
-- A Windows computer capable of running Python 3.10 or newer.
+- A Windows computer capable of running Python 3.11 or newer.
 - Internet connectivity for Gemini API calls.
 - Memory and storage sufficient for the selected PDF and Python environment.
 
 ### Software
 
 - Windows 10/11 and PowerShell.
-- Python 3.10+ (3.11 recommended), pip, and a web browser.
+- Python 3.11+ (recommended), pip, and a web browser.
 - Flask, google-genai, python-dotenv, PyMuPDF, and NumPy.
 - Gemini API key with access to the configured models.
 
@@ -130,7 +130,7 @@ Automated tests cover text chunking, overlap, empty input, vector cosine similar
 
 - Command: `python -m unittest discover -s tests -v`
 - Date/environment: 30 October 2026; Windows, Python 3.15.
-- Result: 10 tests passed, including mocked Google GenAI chat answer handling.
+- Result: 33 tests passed, covering text chunking, overlap, extraction, embeddings, NumPy cosine retrieval, Flask SSR routes, and AJAX endpoints.
 - Flask home-page test-client request: HTTP 200; favicon request: HTTP 204.
 - Manual browser cases: Not run.
 - Gemini API integration check: Not run; no API key was configured.
@@ -143,7 +143,7 @@ Unit tests and a home-page response do not verify access to Gemini or the comple
 
 ## Limitations
 
-Scanned PDFs require external OCR. PDF layout and tables may not extract in reading order. Embedding calls are sequential and may be slow or limited by API quotas. State is lost when the server restarts and is not shared across worker processes. Gemini can generate incorrect or incomplete responses; citations show retrieved pages rather than proving each statement. The development server and security controls are not suitable for public deployment without further work.
+Scanned PDFs require external OCR. PDF layout and tables may not extract in reading order. Embedding calls are batched but may still be limited by API quotas. State is lost when the server restarts and is not shared across worker processes. Gemini can generate incorrect or incomplete responses; citations show retrieved pages rather than proving each statement. The development server and security controls are not suitable for public deployment without further work.
 
 ## Future scope
 
